@@ -30,29 +30,30 @@ def trigger_markey():
 
 # --- SYSTEM TRAY LOGIC ---
 
-def create_image():
-    """Creates a simple 'M' icon for the system tray if you don't have a .png file"""
-    width, height = 64, 64
-    image = Image.new('RGB', (width, height), color=(41, 128, 185)) # Blue background
-    dc = ImageDraw.Draw(image)
-    # Draw a simple white 'M'
-    dc.text((20, 15), "M", fill=(255, 255, 255), font_size=40)
-    return image
 
 def on_quit(icon, item):
     icon.stop()
     os._exit(0) # Force exit the whole script
 
 def setup_tray():
-    # Define the menu
     menu = Menu(
         MenuItem("Markey is Running", lambda: None, enabled=False),
         MenuItem("Exit", on_quit)
     )
     
-    # Create the icon
-    # Note: You can replace create_image() with Image.open("your_logo.png") later
-    icon = Icon("Markey", create_image(), "Markey - Clipboard to Markdown", menu)
+    # Load your custom pixel art PNG
+    try:
+        # Get the path to the icon (handles running as script or as EXE)
+        icon_path = "logo.png" 
+        if not os.path.exists(icon_path):
+            # Fallback if the image is missing
+            img = Image.new('RGB', (64, 64), color=(41, 128, 185))
+        else:
+            img = Image.open(icon_path)
+    except Exception:
+        img = Image.new('RGB', (64, 64), color=(41, 128, 185))
+
+    icon = Icon("Markey", img, "Markey - Clipboard to Markdown", menu)
     icon.run()
 
 # --- HOTKEY LISTENER ---

@@ -1,9 +1,33 @@
 import tkinter as tk
+import os
+import sys
+
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 class MarkeyWindow:
     def __init__(self, extracted_text, callback):
         self.root = tk.Tk()
         self.root.title("Markey")
+        
+        # --- SET CUSTOM WINDOW ICON ---
+        try:
+            # Use resource_path to find logo.png even after bundling into EXE
+            icon_path = resource_path("logo.png")
+            if os.path.exists(icon_path):
+                icon_img = tk.PhotoImage(file=icon_path)
+                # False means the icon only applies to this window, not all top-levels
+                self.root.iconphoto(False, icon_img)
+        except Exception as e:
+            print(f"Note: Could not load window icon: {e}")
+        # ------------------------------
+
         self.extracted_text = extracted_text
         self.callback = callback
         
