@@ -38,7 +38,7 @@ def setup_tray():
     icon.run()
 
 if __name__ == "__main__":
-    print("=== Markey v1.1.0 Ready ===")
+    print("=== Markey Ready ===")
     
     # suppress=True prevents the 'ṁ' symbol by blocking the key from other apps
     keyboard.add_hotkey('ctrl+alt+m', trigger_markey, suppress=True)
