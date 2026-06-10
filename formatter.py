@@ -1,16 +1,20 @@
 import pyperclip
+from config_manager import load_config
 
 def format_to_markdown(text, context_type, custom_topic=""):
-    templates = {
-        "1": f"### VS Code Error\n```python\n{text}\n```\nPlease analyze this error.",
-        "2": f"### GitHub Discussion\n> {text}\n\nPlease summarize the key points.",
-        "3": f"### Website UI Content\n{text}\n\nReview the copy for this layout.",
-    }
+    # Pull dynamic settings configured by the user from AppData JSON store
+    config = load_config()
+    templates = config.get("templates", {})
 
     if context_type == "custom":
         final_md = f"### Topic: {custom_topic}\n---\n{text}"
     else:
-        final_md = templates.get(context_type, text)
+        # Pull the specific layout selection and swap placeholder token
+        raw_template = templates.get(context_type, "{text}")
+        if "{text}" in raw_template:
+            final_md = raw_template.replace("{text}", text)
+        else:
+            final_md = f"{raw_template}\n\n{text}"
 
     pyperclip.copy(final_md)
     return final_md

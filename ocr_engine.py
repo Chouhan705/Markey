@@ -1,12 +1,9 @@
 import asyncio
 import io
-import os
 from PIL import Image, ImageGrab, ImageEnhance
 import winrt.windows.media.ocr as ocr
 import winrt.windows.graphics.imaging as imaging
 import winrt.windows.storage.streams as streams
-import winrt.windows.foundation
-import winrt.windows.foundation.collections
 
 async def get_text_from_clipboard():
     # 1. Capture Image
@@ -16,14 +13,14 @@ async def get_text_from_clipboard():
 
     img = img_data if not isinstance(img_data, list) else Image.open(img_data[0])
 
-    # 2. Preprocessing for Accuracy
-    img = img.convert("L")  # Grayscale
+    # 2. Preprocessing Pipeline for Ultra-Sharp OCR Accuracy
+    img = img.convert("L")  # Convert to Grayscale
     width, height = img.size
-    img = img.resize((width * 2, height * 2), Image.Resampling.LANCZOS) # Upscale
+    img = img.resize((width * 2, height * 2), Image.Resampling.LANCZOS) # High fidelity Upscale
     enhancer = ImageEnhance.Contrast(img)
-    img = enhancer.enhance(2.0).convert("RGB") # High Contrast
+    img = enhancer.enhance(2.0).convert("RGB") # Extreme Contrast Separation
 
-    # 3. Stream to Windows OCR
+    # 3. Memory Stream to WinRT
     byte_io = io.BytesIO()
     img.save(byte_io, format='PNG')
     image_bytes = byte_io.getvalue()
@@ -35,18 +32,20 @@ async def get_text_from_clipboard():
     await writer.flush_async()
     stream.seek(0)
 
-    # 4. Run OCR Engine
+    # 4. Initialize Core Engine
     decoder = await imaging.BitmapDecoder.create_async(stream)
     software_bitmap = await decoder.get_software_bitmap_async()
     engine = ocr.OcrEngine.try_create_from_user_profile_languages()
     if not engine:
-        return "Error: OCR Engine fail."
+        return "Error: OCR Engine failing initialization context."
     
     result = await engine.recognize_async(software_bitmap)
 
-    # 5. Dynamic Layout / Font Size Analysis
+    # 5. Semantic Extractor / Dynamic Bucket Sorting
     lines_raw = []
     for line in result.lines:
+        if not line.words:
+            continue
         line_text = " ".join([w.text for w in line.words])
         avg_h = sum([w.bounding_rect.height for w in line.words]) / len(line.words)
         lines_raw.append({"text": line_text, "height": avg_h})
@@ -54,10 +53,9 @@ async def get_text_from_clipboard():
     if not lines_raw:
         return ""
 
-    # Group heights into buckets (rounding to nearest 10 to handle noise)
+    # Group baseline deviations to the nearest factor of 10 to clear noise
     unique_heights = sorted(list(set([round(l["height"], -1) for l in lines_raw])), reverse=True)
     
-    # Map top 6 sizes to Markdown headers
     height_to_header = {}
     for i, h in enumerate(unique_heights):
         if i < 6 and len(unique_heights) > 1:
