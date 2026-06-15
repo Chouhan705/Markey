@@ -5,11 +5,10 @@ import keyboard
 from pystray import Icon, Menu, MenuItem
 from PIL import Image
 
-# Core components
+# Core structural modules
 from ocr_engine import run_ocr
 from gui import MarkeyWindow, MarkeySetupWindow
 from formatter import format_to_markdown
-from notification_manager import show_toast
 import config_manager
 
 def resource_path(relative_path):
@@ -19,42 +18,38 @@ def resource_path(relative_path):
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
-def trigger_markey():
-    print("\n[MARKEY] Triggered...")
+def ocr_and_gui_worker():
+    """ 
+    Dedicated background worker thread. 
+    Isolating this prevents the Windows COM apartment deadlock.
+    """
     try:
         captured_text = run_ocr()
         
-        # Error validation checks with Toast Alerts
-        if not captured_text:
-            show_toast("Markey Error", "No clear text could be read from the image.")
-            return
-            
-        if captured_text.startswith("Error:"):
-            # Strip baseline string prefix out for clean user display
-            err_msg = captured_text.replace("Error:", "").strip()
-            show_toast("Markey Notification", err_msg)
+        if not captured_text or captured_text.startswith("Error:"):
+            print(f"[MARKEY] Extraction halted: {captured_text}")
             return
 
-        # Success notification!
-        show_toast("Markey Active", "Screenshot parsed successfully! Select layout.")
+        print(f"[MARKEY] OCR extraction clean. Length: {len(captured_text)} chars.")
 
-        def launch_gui():
-            app = MarkeyWindow(captured_text, lambda t, c, tp: format_to_markdown(t, c, tp))
-            app.show()
-
-        ui_thread = threading.Thread(target=launch_gui)
-        ui_thread.start()
+        # Safely launch Tkinter window inside this distinct thread instance
+        app = MarkeyWindow(captured_text, lambda t, c, tp: format_to_markdown(t, c, tp))
+        app.show()
         
     except Exception as e:
-        print(f"Error in execution thread: {e}")
+        print(f"[WORKER ERROR] Critical failure: {e}")
+
+def trigger_markey():
+    print("\n[MARKEY] Triggered via Hotkey...")
+    # Fire and forget: offload EVERYTHING immediately to an isolated thread context
+    threading.Thread(target=ocr_and_gui_worker, daemon=True).start()
 
 def launch_settings_editor():
     def run_editor():
         editor = MarkeySetupWindow(is_welcome_mode=False)
         editor.show()
     
-    editor_thread = threading.Thread(target=run_editor)
-    editor_thread.start()
+    threading.Thread(target=run_editor, daemon=True).start()
 
 def on_quit(icon, item):
     icon.stop()
@@ -83,6 +78,7 @@ if __name__ == "__main__":
         welcome_wizard = MarkeySetupWindow(is_welcome_mode=True)
         welcome_wizard.show()
     
+    # Global hook assignment
     keyboard.add_hotkey('ctrl+alt+m', trigger_markey, suppress=True)
     
     setup_tray()

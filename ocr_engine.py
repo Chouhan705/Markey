@@ -1,26 +1,43 @@
 import asyncio
 import io
-from PIL import Image, ImageGrab, ImageEnhance
+import sys
+from PIL import Image, ImageGrab, ImageOps
+
+# Centralized framework imports 
 import winrt.windows.media.ocr as ocr
 import winrt.windows.graphics.imaging as imaging
 import winrt.windows.storage.streams as streams
 
 async def get_text_from_clipboard():
-    # 1. Capture Image
+    # 1. Capture Raw Clipboard Asset
     img_data = ImageGrab.grabclipboard()
     if img_data is None:
         return "Error: Clipboard is empty. Snip something first!"
 
     img = img_data if not isinstance(img_data, list) else Image.open(img_data[0])
 
-    # 2. Preprocessing Pipeline for Ultra-Sharp OCR Accuracy
-    img = img.convert("L")  # Convert to Grayscale
-    width, height = img.size
-    img = img.resize((width * 2, height * 2), Image.Resampling.LANCZOS) # High fidelity Upscale
-    enhancer = ImageEnhance.Contrast(img)
-    img = enhancer.enhance(2.0).convert("RGB") # Extreme Contrast Separation
+    # === SAFE RGBA FLATTENING LOGIC STACK ===
+    # Check if image has an alpha/transparency channel and flatten it 
+    # to prevent Pillow's ImageOps from crashing on certain screenshots.
+    if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+        # Create a solid black background
+        bg = Image.new("RGB", img.size, (0, 0, 0))
+        # Separate the alpha channel to use as a blend mask
+        mask = img.convert("RGBA").split()[3]
+        bg.paste(img, mask=mask)
+        img = bg
+    else:
+        # Guarantee standard 24-bit RGB pixel structure
+        img = img.convert("RGB")
+    # ========================================
 
-    # 3. Memory Stream to WinRT
+    # Clean multi-monitor upscaling pipeline
+    if img.width < 1000:
+        img = img.resize((img.width * 2, img.height * 2), Image.Resampling.BICUBIC)
+    
+    # Safe to call now without throwing exceptions
+    img = ImageOps.autocontrast(img, cutoff=1)
+
     byte_io = io.BytesIO()
     img.save(byte_io, format='PNG')
     image_bytes = byte_io.getvalue()
@@ -32,7 +49,6 @@ async def get_text_from_clipboard():
     await writer.flush_async()
     stream.seek(0)
 
-    # 4. Initialize Core Engine
     decoder = await imaging.BitmapDecoder.create_async(stream)
     software_bitmap = await decoder.get_software_bitmap_async()
     engine = ocr.OcrEngine.try_create_from_user_profile_languages()
@@ -41,7 +57,6 @@ async def get_text_from_clipboard():
     
     result = await engine.recognize_async(software_bitmap)
 
-    # 5. Semantic Extractor / Dynamic Bucket Sorting
     lines_raw = []
     for line in result.lines:
         if not line.words:
@@ -53,21 +68,19 @@ async def get_text_from_clipboard():
     if not lines_raw:
         return ""
 
-    # Group baseline deviations to the nearest factor of 10 to clear noise
-    unique_heights = sorted(list(set([round(l["height"], -1) for l in lines_raw])), reverse=True)
-    
-    height_to_header = {}
-    for i, h in enumerate(unique_heights):
-        if i < 6 and len(unique_heights) > 1:
-            height_to_header[h] = "#" * (i + 1)
-        else:
-            height_to_header[h] = ""
+    heights = [l["height"] for l in lines_raw]
+    avg_base_height = sum(heights) / len(heights)
 
     formatted_md = []
     for line in lines_raw:
-        h_bucket = round(line["height"], -1)
-        prefix = height_to_header.get(h_bucket, "")
-        formatted_md.append(f"{prefix} {line['text']}".strip())
+        if line["height"] > avg_base_height * 1.35:
+            prefix = "### "
+        elif line["height"] > avg_base_height * 1.15:
+            prefix = "#### "
+        else:
+            prefix = ""
+            
+        formatted_md.append(f"{prefix}{line['text']}".strip())
 
     return "\n".join(formatted_md)
 
