@@ -11,6 +11,9 @@ from gui import MarkeyWindow, MarkeySetupWindow
 from formatter import format_to_markdown
 import config_manager
 
+# Global reference to the system tray icon
+tray_icon = None
+
 def resource_path(relative_path):
     try:
         base_path = sys._MEIPASS
@@ -19,20 +22,25 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 def ocr_and_gui_worker():
-    """ 
-    Dedicated background worker thread. 
-    Isolating this prevents the Windows COM apartment deadlock.
-    """
+    """ Dedicated background worker thread preventing COM apartment deadlocks """
+    global tray_icon
     try:
         captured_text = run_ocr()
         
         if not captured_text or captured_text.startswith("Error:"):
             print(f"[MARKEY] Extraction halted: {captured_text}")
+            if tray_icon:
+                # Trigger a secure, native system notification balloon
+                tray_icon.notify("No clear text read from the image.", title="Markey Error")
             return
 
         print(f"[MARKEY] OCR extraction clean. Length: {len(captured_text)} chars.")
 
-        # Safely launch Tkinter window inside this distinct thread instance
+        # Success system notification!
+        if tray_icon:
+            tray_icon.notify("Screenshot parsed successfully! Choose layout.", title="Markey Active")
+
+        # Launch Tkinter layout window
         app = MarkeyWindow(captured_text, lambda t, c, tp: format_to_markdown(t, c, tp))
         app.show()
         
@@ -41,7 +49,6 @@ def ocr_and_gui_worker():
 
 def trigger_markey():
     print("\n[MARKEY] Triggered via Hotkey...")
-    # Fire and forget: offload EVERYTHING immediately to an isolated thread context
     threading.Thread(target=ocr_and_gui_worker, daemon=True).start()
 
 def launch_settings_editor():
@@ -56,6 +63,7 @@ def on_quit(icon, item):
     os._exit(0)
 
 def setup_tray():
+    global tray_icon
     icon_path = resource_path("logo.png")
     try:
         img = Image.open(icon_path)
@@ -67,8 +75,9 @@ def setup_tray():
         MenuItem("Edit Templates...", launch_settings_editor),
         MenuItem("Exit", on_quit)
     )
-    icon = Icon("Markey", img, "Markey", menu)
-    icon.run()
+    
+    tray_icon = Icon("Markey", img, "Markey", menu)
+    tray_icon.run()
 
 if __name__ == "__main__":
     print("=== Markey Initializing ===")
