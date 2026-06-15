@@ -4,6 +4,7 @@ import sys
 import keyboard
 from pystray import Icon, Menu, MenuItem
 from PIL import Image
+import ctypes
 
 # Core structural modules
 from ocr_engine import run_ocr
@@ -13,6 +14,7 @@ import config_manager
 
 # Global reference to the system tray icon
 tray_icon = None
+mutex = None
 
 def resource_path(relative_path):
     try:
@@ -59,7 +61,11 @@ def launch_settings_editor():
     threading.Thread(target=run_editor, daemon=True).start()
 
 def on_quit(icon, item):
+    global mutex
     icon.stop()
+    # Release the system Mutex handle when cleanly exiting
+    if mutex:
+        ctypes.windll.kernel32.ReleaseMutex(mutex)
     os._exit(0)
 
 def setup_tray():
@@ -82,6 +88,19 @@ def setup_tray():
 if __name__ == "__main__":
     print("=== Markey Initializing ===")
     
+    # --- SINGLE INSTANCE LOCK ENGINE ---
+    # Create a system-wide named mutex to guard execution contexts
+    ERROR_ALREADY_EXISTS = 183
+    mutex_name = "Global\\Markey_SingleInstance_Mutex"
+    
+    mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
+    last_error = ctypes.windll.kernel32.GetLastError()
+    
+    if last_error == ERROR_ALREADY_EXISTS:
+        print("[MARKEY ALERT] Markey is already running in the background. Exiting duplicate instance safely.")
+        sys.exit(0)
+    # -----------------------------------
+
     if config_manager.is_first_run():
         print("[MARKEY] First run detected. Launching setup onboarding wizard...")
         welcome_wizard = MarkeySetupWindow(is_welcome_mode=True)
