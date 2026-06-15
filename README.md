@@ -13,7 +13,26 @@
 3. Press `Ctrl + Alt + M`.
 4. Select your format and paste into your favorite LLM.
 
-## Setup for Developers
-1. Clone the repo.
-2. Install requirements: `pip install winrt-Windows.Media.Ocr winrt-Windows.Graphics.Imaging winrt-Windows.Storage.Streams Pillow pynput pystray pyperclip`.
-3. Run `python main.py`.
+## Developer Setup Guide
+### Follow these steps to configure your local development environment and run Markey from source.
+
+1. Prerequisites
+   Ensure you have Python 3.10+ installed on your Windows 10/11 machine.
+2. Clone the Repository
+   Open your terminal (PowerShell or Command Prompt) and run:
+   ```bash
+   git clone [https://github.com/yourusername/Markey.git](https://github.com/yourusername/Markey.git)
+   cd Markey
+3. Install Requirements
+   Run:
+   ```bash
+   pip install winrt-Windows.Media.Ocr winrt-Windows.Graphics.Imaging winrt-Windows.Storage.Streams Pillow keyboard pystray pyperclip
+4. Run the Application
+   Run:
+   ```bash
+   python main.py
+5. Production Compilation
+   To bundle Markey into a portable, zero-dependency single executable file:
+   ```bash
+   pip install pyinstaller
+   pyinstaller --noconsole --onefile --icon=logo.ico --add-data "logo.png;." main.py
