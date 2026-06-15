@@ -3,58 +3,62 @@ import re
 from config_manager import load_config
 
 def detect_code_language(text):
-    """
-    Scans code text signatures to determine the programming language.
-    Returns the markdown fence identifier string.
-    """
-    # Clean up white spaces for uniform line evaluations
-    lines = [line.strip() for line in text.split("\n") if line.strip()]
-    combined = " ".join(lines)
+    """ Scans text signatures for programming languages """
+    # Strip layout headers out to look at clean characters
+    clean_lines = [re.sub(r'^#+\s*', '', line).strip() for line in text.split("\n")]
+    combined = " ".join(clean_lines)
 
-    # 1. Python Signatures
-    if any(line.startswith(("def ", "import ", "from ", "class ")) for line in lines) or "if __name__ ==" in combined or "print(" in combined:
-        if ":" in combined and ("elif " in combined or "pass" in combined or "lambda " in combined):
-            return "python"
-
-    # 2. JavaScript / TypeScript Signatures
-    if any(line.startswith(("const ", "let ", "import ", "export ", "function ")) for line in lines) or "console.log" in combined or "=>" in combined:
+    # Common programming keywords
+    if any(line.startswith(("def ", "import ", "from ", "class ", "print(")) for line in clean_lines) or "==" in combined or "def " in combined:
+        return "python"
+    if any(line.startswith(("const ", "let ", "function ")) for line in clean_lines) or "console.log" in combined or "=>" in combined:
         return "javascript"
-
-    # 3. C++ / C / Java Signatures
-    if "#include" in combined or "using namespace std" in combined or "std::" in combined:
+    if "#include" in combined or "std::" in combined:
         return "cpp"
-    if "public class " in combined and "public static void main" in combined:
-        return "java"
-
-    # 4. HTML / XML
-    if "</" in combined or "<html" in combined or "<div>" in combined:
-        return "html"
-
-    # 5. CSS
-    if "{" in combined and "}" in combined and any(x in combined for x in [";", "margin:", "padding:", "color:"]):
-        if not any(x in combined for x in ["function", "const", "def"]):
-            return "css"
-
-    # Default fallback to plain text if syntax is ambiguous
-    return "text"
+    
+    return None
 
 def format_to_markdown(text, context_type, custom_topic=""):
     config = load_config()
     templates = config.get("templates", {})
 
+    topic_lower = custom_topic.lower()
+    
+    # 1. Run our signature engine over the text body to verify if it's code
+    detected_lang = detect_code_language(text)
+    
+    # 2. Check if the context choice or the text scan indicates programming code
+    is_code_context = (
+        context_type == "1" or 
+        "code" in topic_lower or 
+        topic_lower in ["python", "js", "javascript", "cpp", "c++", "java", "html", "css"] or
+        detected_lang is not None
+    )
+
+    # If the fallback scan caught code but the custom topic didn't specify the language
+    if detected_lang is None and is_code_context:
+        detected_lang = "text"
+
+    if is_code_context:
+        # Clean out all visual layout tracking hashes (#) assigned by the OCR height scanner
+        lines_clean = []
+        for line in text.split("\n"):
+            cleaned = re.sub(r'^#+\s*', '', line)
+            lines_clean.append(cleaned)
+        text = "\n".join(lines_clean)
+
     if context_type == "custom":
-        final_md = f"### Topic: {custom_topic}\n---\n{text}"
+        if is_code_context:
+            final_md = f"### Topic: {custom_topic}\n---\n```{detected_lang or 'text'}\n{text}\n```"
+        else:
+            final_md = f"### Topic: {custom_topic}\n---\n{text}"
     else:
         raw_template = templates.get(context_type, "{text}")
         
-        # Look specifically at the VS Code Error / Code block selection
         if context_type == "1":
-            detected_lang = detect_code_language(text)
-            # Dynamically substitute placeholder block wrappers if they exist
             if "```python" in raw_template:
                 raw_template = raw_template.replace("```python", f"```{detected_lang}")
             elif "```" in raw_template:
-                # If user removed 'python' but left the tick boxes, match it
                 raw_template = re.sub(r'```\w*', f"```{detected_lang}", raw_template)
 
         if "{text}" in raw_template:

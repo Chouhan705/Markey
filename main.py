@@ -4,8 +4,12 @@ import sys
 import keyboard
 from pystray import Icon, Menu, MenuItem
 from PIL import Image
+
+# Core components
 from ocr_engine import run_ocr
 from gui import MarkeyWindow, MarkeySetupWindow
+from formatter import format_to_markdown
+from notification_manager import show_toast
 import config_manager
 
 def resource_path(relative_path):
@@ -19,9 +23,20 @@ def trigger_markey():
     print("\n[MARKEY] Triggered...")
     try:
         captured_text = run_ocr()
-        if not captured_text or captured_text.startswith("Error:"):
-            print(f"[MARKEY] OCR Failed or Empty: {captured_text}")
+        
+        # Error validation checks with Toast Alerts
+        if not captured_text:
+            show_toast("Markey Error", "No clear text could be read from the image.")
             return
+            
+        if captured_text.startswith("Error:"):
+            # Strip baseline string prefix out for clean user display
+            err_msg = captured_text.replace("Error:", "").strip()
+            show_toast("Markey Notification", err_msg)
+            return
+
+        # Success notification!
+        show_toast("Markey Active", "Screenshot parsed successfully! Select layout.")
 
         def launch_gui():
             app = MarkeyWindow(captured_text, lambda t, c, tp: format_to_markdown(t, c, tp))
@@ -33,10 +48,7 @@ def trigger_markey():
     except Exception as e:
         print(f"Error in execution thread: {e}")
 
-from formatter import format_to_markdown
-
 def launch_settings_editor():
-    """ Opens the template editor from the tray without freezing the background service """
     def run_editor():
         editor = MarkeySetupWindow(is_welcome_mode=False)
         editor.show()
@@ -55,7 +67,6 @@ def setup_tray():
     except Exception:
         img = Image.new('RGB', (64, 64), color=(41, 128, 185))
     
-    # Updated Tray Layout to include our Settings panel trigger
     menu = Menu(
         MenuItem("Markey is Running", lambda: None, enabled=False), 
         MenuItem("Edit Templates...", launch_settings_editor),
@@ -67,13 +78,11 @@ def setup_tray():
 if __name__ == "__main__":
     print("=== Markey Initializing ===")
     
-    # Step 1 & 2: Handle First Run Onboarding interception safely on core main-thread loop
     if config_manager.is_first_run():
-        print("[MARKEY] First run detected. Laundering setup onboarding wizard...")
+        print("[MARKEY] First run detected. Launching setup onboarding wizard...")
         welcome_wizard = MarkeySetupWindow(is_welcome_mode=True)
         welcome_wizard.show()
     
-    # Step 3: Register global hooks and start background runtime service environment
     keyboard.add_hotkey('ctrl+alt+m', trigger_markey, suppress=True)
     
     setup_tray()
